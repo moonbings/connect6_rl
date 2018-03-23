@@ -1,0 +1,5 @@
+{
+	"checkpoint_period": 100,
+	"sampling_range": 0.5,
+	"sampling_period": 100
+}
