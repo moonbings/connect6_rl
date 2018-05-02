@@ -17,7 +17,7 @@ class Test:
         self.simulation = core.simulation.Connect6()
 
         self.save_path = 'save'
-        self.agent_path = os.path.join(self.save_path, 'agent', 'checkpoint')
+        self.agent_path = os.path.join(self.save_path, 'agent')
 
     def run(self):
         self.black_agent.init()

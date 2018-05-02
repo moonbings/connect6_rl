@@ -1,5 +1,5 @@
 {
-	"black_checkpoint": 1000,
+	"black_checkpoint": 10000,
 	"white_checkpoint": null,
 	"board": null
 }

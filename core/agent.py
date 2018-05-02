@@ -4,6 +4,9 @@ from keras import layers
 from keras import optimizers
 import tensorflow as tf
 import numpy as np
+from threading import Thread
+from threading import Lock
+import queue
 import pickle
 import copy
 import os
@@ -19,14 +22,19 @@ class Connect6:
     def __init__(self):
         self.board_size = (19, 19)
         self.model = None
+        self.session = None
+        self.graph = None
 
     def init(self):
         self.model = self.build_model()
+        self.model._make_predict_function()
+        self.session = K.get_session()
+        self.graph = tf.get_default_graph()
 
     def build_model(self):
         inputs = layers.Input(shape=(self.board_size[0], self.board_size[1], 5))
         layer = layers.Conv2D(256, (1, 1), use_bias=False, padding='same', kernel_initializer='he_normal')(inputs)
-        for i in range(5):
+        for i in range(19):
             conv_layer = layers.BatchNormalization()(layer)
             conv_layer = layers.PReLU()(conv_layer)
             conv_layer = layers.Conv2D(64, (1, 1), use_bias=False, padding='same', kernel_initializer='he_normal')(conv_layer)
@@ -89,6 +97,9 @@ class Connect6:
             self.model.load_weights(model_path)
         else:
             self.model = models.load_model(model_path)
+            self.model._make_predict_function()
+            self.session = K.get_session()
+            self.graph = tf.get_default_graph()
 
     def get_action(self, environment, best):
         action = None
@@ -117,7 +128,11 @@ class Connect6:
         state = environment.get_state()
         state = environment.pre_processing(state, player, environment.get_stone())
         state = np.array([state])
-        policy = self.model.predict(state)[0]
+
+        with self.session.as_default():
+            with self.graph.as_default():
+                policy = self.model.predict(state)[0]
+
         action_list = []
 
         if best:
@@ -152,93 +167,85 @@ class Connect6:
         return action_list
 
     def search_vcdt_action(self, environment):
-        path = set()
+        player = environment.get_player()
+        search_list = queue.Queue()
+        next_search_list = queue.Queue()
         cache = set()
-        return self.search_vcdt_attack(environment, path, cache)
+        lock = Lock()
+        thread_list = []
+        thread_limit = 8
 
-    def search_vcdt_attack(self, environment, path, cache):
+        search_list.put((environment, []))
+        while not search_list.empty():
+            while not search_list.empty():
+                current_environment, current_path = search_list.get()
+                current_player = current_environment.get_player()
+
+                if current_environment.check_win():
+                    return (current_path[0][0], current_path[0][1])
+
+                args = (current_environment, current_path, next_search_list, cache, lock)
+                if current_player == player:
+                    thread = Thread(target=self.search_vcdt_attack, args=args)
+                    thread.start()
+                else:
+                    thread = Thread(target=self.search_vcdt_defense, args=args)
+                    thread.start()
+
+                thread_list.append(thread)
+                while len(thread_list) >= thread_limit:
+                    thread_list = [thread for thread in thread_list if thread.isAlive()]
+
+            for thread in thread_list:
+                thread.join()
+
+            while not next_search_list.empty():
+                search_list.put(next_search_list.get())
+
+        del(cache)
+        return None
+
+    def search_vcdt_attack(self, environment, path, search_list, cache, lock):
         player = environment.get_player()
         stone = environment.get_stone()
         action_list = self.search_action(environment, 3, True)
 
-        for action in action_list:
-            next_environment = copy.deepcopy(environment)
-            next_environment.step(action)
-            player_threat = next_environment.get_threat_count(player)
+        with lock:
+            for action in action_list:
+                next_environment = copy.deepcopy(environment)
+                next_environment.step(action)
+                next_threat = next_environment.get_threat_count(player)
 
-            if next_environment.check_win():
-                return action
-            if next_environment.check_done():
-                continue
-
-            if stone == 2:
-                path.add(action + (player,))
-                if pickle.dumps(path) in cache:
+                next_path = copy.deepcopy(path)
+                next_path.append(action + (player,))
+                if pickle.dumps(sorted(next_path)) in cache:
                     continue
 
-                result = self.search_vcdt_attack(next_environment, path, cache)
-
-                cache.add(pickle.dumps(path))
-                path.remove(action + (player,))
-                if result is not None:
-                    return action
-
-            if stone == 1 and player_threat >= 2:
-                path.add(action + (player,))
-                if pickle.dumps(path) in cache:
+                if not next_environment.check_win() and next_environment.check_done():
                     continue
+                if next_environment.check_win() or stone == 2 or (stone == 1 and next_threat >= 2):
+                    search_list.put((next_environment, next_path))
+                    cache.add(pickle.dumps(sorted(next_path)))
 
-                result = self.search_vcdt_defense(next_environment, path, cache)
-
-                cache.add(pickle.dumps(path))
-                path.remove(action + (player,))
-                if result is not None:
-                    return action
-
-        return None
-
-    def search_vcdt_defense(self, environment, path, cache):
+    def search_vcdt_defense(self, environment, path, search_list, cache, lock):
         player = environment.get_player()
         opponent = environment.get_opponent()
         stone = environment.get_stone()
         action = self.search_action(environment, 1, True)[0]
 
-        next_environment = copy.deepcopy(environment)
-        next_environment.step(action)
-        player_threat = next_environment.get_threat_count(player)
-        opponent_threat = next_environment.get_threat_count(opponent)
+        with lock:
+            next_environment = copy.deepcopy(environment)
+            next_environment.step(action)
+            next_threat = next_environment.get_threat_count(opponent)
 
-        if next_environment.check_done():
-            return None
+            next_path = copy.deepcopy(path)
+            next_path.append(action + (player,))
+            if pickle.dumps(sorted(next_path)) in cache:
+                return
 
-        if stone == 2:
-            if opponent_threat <= 0:
-                return None
-
-            path.add(action + (player,))
-            if pickle.dumps(path) in cache:
-                return None
-
-            result = self.search_vcdt_defense(next_environment, path, cache)
-
-            cache.add(pickle.dumps(path))
-            path.remove(action + (player,))
-            if result is None:
-                return None
-
-        if stone == 1:
-            path.add(action + (player,))
-            if pickle.dumps(path) in cache:
-                return None
-
-            result = self.search_vcdt_attack(next_environment, path, cache)
-
-            cache.add(pickle.dumps(path))
-            path.remove(action + (player,))
-            if result is None:
-                return None
-
-        return action
+            if not (next_environment.check_done() or (stone == 2 and next_threat <= 0)):
+                search_list.put((next_environment, path))
+                cache.add(pickle.dumps(sorted(next_path)))
 
     def get_attack_mask(self, environment):
         player = environment.get_player()
