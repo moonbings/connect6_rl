@@ -4,7 +4,7 @@ Connect6 AI program using VCDT search and REINFORCE algorithm
 
 The uploaded model wins the NCTU6 level 2 ([NCTU6 Android App](https://play.google.com/store/apps/details?id=tw.edu.nctu.csie.cyclab.connect6))
 
-
+</br>
 
 ## Installation
 
@@ -14,9 +14,7 @@ python 3.x, tensorflow, keras, numpy, h5py
 pip install -r requirements.txt
 ```
 
-
-
-
+</br>
 
 ## Usage
 
@@ -34,7 +32,7 @@ python train.py
 
 **sampling_range** (int): This value is used to specify how many top agents should be considered when sampling agent for each iteration (See Training Flow).
 
-
+</br>
 
 ### Test
 
@@ -50,7 +48,7 @@ python test.py
 
 **white_checkpoint** (list): This list contains agent versions that want to play with white. If this value is ```null```, all versions of agent participate in the game.
 
-
+</br>
 
 ### Play
 
@@ -68,9 +66,7 @@ python play.py
 
 **board** (list): You can specify the state of game board (See example json files).
 
-
-
-
+</br>
 
 ## Methods
 
@@ -78,15 +74,13 @@ python play.py
 
  <img src="asset/algorithm flow.png" height="350px"></img>
 
-
-
 #### VCDT
 
 > A type of winning strategy, called Victory by Continuous Double-Threat-or-more moves.
 
 In this algorithm, only the top N actions from neural network are searched using level-synchronized parallel BFS.
 
-
+</br>
 
 ### Training Flow
 
@@ -100,7 +94,7 @@ In this algorithm, only the top N actions from neural network are searched using
 
 **Training method**: Use REINFORCE algorithm.
 
-
+</br>
 
 ### Other details
 
@@ -110,9 +104,7 @@ In this algorithm, only the top N actions from neural network are searched using
 - If player can now connect six stones in a line, connect them.
 - If opponent can connect six stones in a line on the next turn, defend it.
 
-
-
-
+</br>
 
 ## Results
 
@@ -120,9 +112,7 @@ In this algorithm, only the top N actions from neural network are searched using
 
  <img src="asset/agent league results (heatmap).png" height="450px"></img>
 
-
-
-
+</br>
 
 ## Todo
 
